@@ -1,0 +1,44 @@
+node {
+    // Get Artifactory server instance, defined in the Artifactory Plugin administration page.
+    def server = Artifactory.server "jfrog-demo"
+    // Create an Artifactory Maven instance.
+    def rtMaven = Artifactory.newMavenBuild()
+    def buildInfo
+
+    stage('Clone sources') {
+        git url: 'https://github.com/pathanadil/project-examples.git'
+    }
+
+    stage('Artifactory configuration') {
+        // Tool name from Jenkins configuration
+        rtMaven.tool = "maven-demo"
+        // Set Artifactory repositories for dependencies resolution and artifacts deployment.
+        rtMaven.deployer releaseRepo: 'mvn-stage', snapshotRepo: 'mvn-stage', server: server
+        rtMaven.resolver releaseRepo: 'mv-virtual', snapshotRepo: 'mv-virtual', server: server
+    }
+
+    stage('Maven build') {
+        buildInfo = rtMaven.run pom: 'maven-example/pom.xml', goals: '-U clean -e install -Dmaven.repo.local=.m2'
+    }
+
+    stage('Publish build info') {
+        server.publishBuildInfo buildInfo
+    }
+
+    
+    def promotionConfig = [
+    'targetRepo'         : 'mvn-stage',
+    'buildName'          : buildInfo.name,
+    'buildNumber'        : buildInfo.number,
+    'comment'            : 'this is the promotion comment',
+    'status'             : 'Released',
+    'sourceRepo'         : 'mvn-stage',
+    'includeDependencies': true,
+    'copy'               : true,
+    'failFast'           : true
+    ]
+
+    stage('Promote build') {
+        server.promote promotionConfig
+    }
+}
